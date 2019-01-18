@@ -7,6 +7,7 @@ use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\Question;
+use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpKernel\Bundle\BundleInterface;
 
 class DevelopGenerateClassCommand extends ContainerAwareCommand
@@ -36,12 +37,13 @@ class DevelopGenerateClassCommand extends ContainerAwareCommand
 		}));
 		$directory = $console->ask($input, $output, new Question('Directory (Model): ', 'Model'));
 
-		$className = $console->ask($input, $output, (new Question('ClassName (ModelDto): ', 'ModelDto'))->setValidator(function ($value) use ($bundle, $directory,$console, $input, $output)
+		$className = $console->ask($input, $output, (new Question('ClassName (ModelDto): ', 'ModelDto'))->setValidator(function ($value) use ($bundle, $directory, $console, $input, $output)
 		{
 			$value = ltrim($value, '.php');
 			if (file_exists("{$bundle->getPath()}/{$directory}/$value.php"))
 			{
-				if($console->ask($input, $output, new Question("File {$bundle->getPath()}/{$directory}/$value.php already exist. Override? (y): ", 'y')) !== 'y'){
+				if ($console->ask($input, $output, new Question("File {$bundle->getPath()}/{$directory}/$value.php already exist. Override? (y): ", 'y')) !== 'y')
+				{
 					throw new \Exception("File {$bundle->getPath()}/{$directory}/$value.php already exist");
 				}
 			}
@@ -65,9 +67,60 @@ class DevelopGenerateClassCommand extends ContainerAwareCommand
 			case 2:
 				break;
 			case 3:
+				$this->createManual($bundle, $directory, $className, $input, $output);
 				break;
 		}
 
+	}
+
+
+	protected function createManual(BundleInterface $bundle, string $directory, $className, InputInterface $input, OutputInterface $output)
+	{
+		$console = new QuestionHelper($input);
+
+		$fields = [];
+		$files = [];
+		foreach (Finder::create()->in(dirname(dirname(__DIR__)))->files()->name("!Dto\.php$!") as $file)
+		{
+			/** @var \SplFileInfo $file */
+			$files[] = str_replace(".php", "", $file->getFilename());
+		}
+
+		while (true)
+		{
+			$fieldName = $console->ask($input, $output, (new Question("New field name (press <return> to stop adding fields): ", null))->setValidator(function ($value) use ($fields)
+			{
+				if (in_array($value, $fields))
+				{
+					throw new \Exception("Field {$value} already exist");
+				}
+				return $value;
+			}));
+			if (!$fieldName)
+			{
+				break;
+			}
+			$types = array_merge(['int', 'float', 'string', 'bool', 'object', 'array'], $files);
+
+			$fieldDataType = $console->ask($input, $output, (new Question('Enter filed type (string): ', 'string'))->setAutocompleterValues($types)->setValidator(function ($value) use ($types)
+			{
+				if (!in_array($value, $types))
+				{
+					throw new \Exception('Field type must be one of basic types or *Dto. Try use string…');
+				}
+				return $value;
+			}));
+
+			if ($fieldName && $fieldDataType)
+			{
+				$fields[$fieldName] = $fieldDataType;
+			}
+			else
+			{
+				break;
+			}
+		}
+		$this->createClass($bundle, $directory, $className, $fields);
 	}
 
 	protected function createClassFromXml(BundleInterface $bundle, string $directory, string $className, InputInterface $input, OutputInterface $output)
@@ -130,12 +183,12 @@ class {$className} implements \JsonSerializable
 	}
 	public function toXml()
 	{
-		\$root = new \\SimpleXMLElement('\<".str_replace("Dto", "", lcfirst($className))."\>\<\/".str_replace("Dto", "", lcfirst($className))."\>');\n";
+		\$root = new \\SimpleXMLElement('<" . str_replace("Dto", "", lcfirst($className)) . "></" . str_replace("Dto", "", lcfirst($className)) . ">');\n";
 		foreach ($fields as $field => $type)
 		{
-			$c.= "\t\t\$root->addChild('{$field}', \$this->get" . ucfirst($field) . "());\n";
+			$c .= "\t\t\$root->addChild('{$field}', \$this->get" . ucfirst($field) . "());\n";
 		}
-		$c.="
+		$c .= "
 		return \$root->asXML();
 	}
 	";
@@ -189,8 +242,8 @@ class {$className}Test extends \PHPUnit_Framework_TestCase
 	
 	public function testSet" . ucfirst($field) . "()
 	{
-		\$this->assertEquals(\$this->instance, \$this->instance->set".ucfirst($field)."(($type)111));
-		\$this->assertEquals(($type)111, \$this->instance->get".ucfirst($field)."());
+		\$this->assertEquals(\$this->instance, \$this->instance->set" . ucfirst($field) . "(($type)111));
+		\$this->assertEquals(($type)111, \$this->instance->get" . ucfirst($field) . "());
 	}
 	
 ";
