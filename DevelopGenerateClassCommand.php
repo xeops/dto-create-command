@@ -36,12 +36,14 @@ class DevelopGenerateClassCommand extends ContainerAwareCommand
 		}));
 		$directory = $console->ask($input, $output, new Question('Directory (Model): ', 'Model'));
 
-		$className = $console->ask($input, $output, (new Question('ClassName (ModelDto): ', 'ModelDto'))->setValidator(function ($value) use ($bundle, $directory)
+		$className = $console->ask($input, $output, (new Question('ClassName (ModelDto): ', 'ModelDto'))->setValidator(function ($value) use ($bundle, $directory,$console, $input, $output)
 		{
 			$value = ltrim($value, '.php');
 			if (file_exists("{$bundle->getPath()}/{$directory}/$value.php"))
 			{
-				throw new \Exception("File {$bundle->getPath()}/{$directory}/$value.php already exist");
+				if($console->ask($input, $output, new Question("File {$bundle->getPath()}/{$directory}/$value.php already exist. Override? (y): ", 'y')) !== 'y'){
+					throw new \Exception("File {$bundle->getPath()}/{$directory}/$value.php already exist");
+				}
 			}
 			return $value;
 		}));
@@ -125,6 +127,16 @@ class {$className} implements \JsonSerializable
 		$c .= "
 		];
 		
+	}
+	public function toXml()
+	{
+		\$root = new \\SimpleXMLElement('\<".str_replace("Dto", "", lcfirst($className))."\>\<\/".str_replace("Dto", "", lcfirst($className))."\>');\n";
+		foreach ($fields as $field => $type)
+		{
+			$c.= "\t\t\$root->addChild('{$field}', \$this->get" . ucfirst($field) . "());\n";
+		}
+		$c.="
+		return \$root->asXML();
 	}
 	";
 		foreach ($fields as $field => $type)
